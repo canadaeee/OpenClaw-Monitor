@@ -167,12 +167,12 @@ def _load_ports(env_value: str | None, fallback: object) -> list[int]:
 
 def _default_gateway_config() -> dict[str, Any]:
     return {
-        "enabled": False,
+        "enabled": True,
         "auto_capture": True,
         "probe_interval_seconds": 15,
         "mode": "local-first",
         "default_port": 18789,
-        "discovery_ports": [18789, 3000],
+        "discovery_ports": [18789],
         "base_url": "",
         "ws_url": "",
         "origin": "",

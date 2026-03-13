@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "base_url": "",
   "ws_url": "",
   "origin": "",
@@ -23,7 +23,6 @@
   ],
   "default_port": 18789,
   "discovery_ports": [
-    18789,
-    3000
+    18789
   ]
 }
