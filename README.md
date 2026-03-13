@@ -147,12 +147,12 @@ git push -u origin main
 ```
 
 3. 将 README 里的 `<owner>/<repo>` 替换为真实仓库地址
-4. 使用根目录的 [`RELEASE_NOTES_v0.1.0.md`](./RELEASE_NOTES_v0.1.0.md) 作为首版 Release 文案
+4. 使用根目录的 [`RELEASE_NOTES_v1.0.0.md`](./RELEASE_NOTES_v1.0.0.md) 作为首版 Release 文案
 
 ### 仓库说明
 
 - `docs/` 目录仅本地保留，不会推送到 GitHub
-- 版本发布说明位于 [`RELEASE_NOTES_v0.1.0.md`](./RELEASE_NOTES_v0.1.0.md)
+- 版本发布说明位于 [`RELEASE_NOTES_v1.0.0.md`](./RELEASE_NOTES_v1.0.0.md)
 
 ### 致敬
 
@@ -303,12 +303,12 @@ git push -u origin main
 ```
 
 3. Replace `<owner>/<repo>` in this README
-4. Use [`RELEASE_NOTES_v0.1.0.md`](./RELEASE_NOTES_v0.1.0.md) for the first release notes
+4. Use [`RELEASE_NOTES_v1.0.0.md`](./RELEASE_NOTES_v1.0.0.md) for the first release notes
 
 ### Repository Notes
 
 - `docs/` is intentionally kept local and excluded from GitHub
-- release notes live in [`RELEASE_NOTES_v0.1.0.md`](./RELEASE_NOTES_v0.1.0.md)
+- release notes live in [`RELEASE_NOTES_v1.0.0.md`](./RELEASE_NOTES_v1.0.0.md)
 
 ### Respect
 

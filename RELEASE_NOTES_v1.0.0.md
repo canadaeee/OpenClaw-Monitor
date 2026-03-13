@@ -1,4 +1,4 @@
-# OpenClaw Monitor v0.1.0
+# OpenClaw Monitor v1.0.0
 
 [中文](#中文) | [English](#english)
 
@@ -22,7 +22,7 @@
 
 ### 当前边界
 
-- v0.1.0 不把跨设备直连 Gateway 作为首发硬要求
+- v1.0.0 不把跨设备直连 Gateway 作为首发硬要求
 - 对需要 `device identity` 的远程 Gateway，暂未完成完整适配
 - node-side collector 当前作为补充输入路径，优先支持 JSONL 文件
 - 暂未提供界面内一键自更新，当前推荐使用脚本更新
@@ -47,7 +47,7 @@
 
 ### Current Boundaries
 
-- Cross-device direct Gateway access is not a v0.1.0 requirement
+- Cross-device direct Gateway access is not a v1.0.0 requirement
 - Remote Gateways requiring device identity are not fully adapted yet
 - The node-side collector is currently a fallback path and focuses on JSONL input first
 - In-app one-click self-update is not included yet; script-based update is the recommended path for now
