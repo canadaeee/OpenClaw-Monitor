@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from . import repository
 from .collector import OpenClawCollector
 from .gateway_ws import OpenClawGatewayStream
-from .node_collector import NodeSideCollector
+from .node_collector import NodeCollectorRuntimeService, NodeSideCollector
 from .schemas import GatewayConfigUpdate, IngestEvent, NodeCollectorIngestFileRequest
 from .settings import load_gateway_settings, save_gateway_settings, settings_to_public_dict
 
@@ -11,6 +11,7 @@ router = APIRouter(prefix="/api")
 collector = OpenClawCollector(load_gateway_settings())
 gateway_stream = OpenClawGatewayStream(collector)
 node_collector = NodeSideCollector(collector)
+node_collector_runtime = NodeCollectorRuntimeService(node_collector)
 runtime_service = None
 gateway_manager = None
 
@@ -174,5 +175,14 @@ def node_collector_ingest_file(request: NodeCollectorIngestFileRequest) -> dict:
     return {
         "ingested": len(results),
         "path": request.path,
+        "state": node_collector.describe(),
+    }
+
+
+@router.post("/node-collector/poll")
+def node_collector_poll() -> dict:
+    results = node_collector.poll_jsonl_file()
+    return {
+        "ingested": len(results),
         "state": node_collector.describe(),
     }

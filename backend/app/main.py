@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import collector, router
+from .api import collector, node_collector_runtime, router
 from .db import init_db
 from .gateway_manager import GatewayManager
 from .runtime import GatewayRuntimeService
@@ -23,9 +23,11 @@ async def lifespan(_: FastAPI):
     api.runtime_service = runtime_service
     api.gateway_manager = gateway_manager
     await gateway_manager.start()
+    await node_collector_runtime.start()
     try:
         yield
     finally:
+        await node_collector_runtime.stop()
         await gateway_manager.stop()
 
 

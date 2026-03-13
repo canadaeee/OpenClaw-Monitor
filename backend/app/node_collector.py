@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +46,9 @@ class NodeCollectorState:
         "artifact_emitted",
         "error_event",
     ])
+    autoPolling: bool = False
+    pollIntervalSeconds: int = 5
+    lastFileOffset: int = 0
 
 
 class NodeSideCollector:
@@ -55,7 +60,10 @@ class NodeSideCollector:
             mode=self.config.mode,
             source_type=self.config.source_type,
             source_path=self.config.source_path,
+            autoPolling=self.config.enabled,
+            pollIntervalSeconds=self.config.poll_interval_seconds,
         )
+        self._offsets: dict[str, int] = {}
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -70,6 +78,9 @@ class NodeSideCollector:
             "note": self.state.note,
             "sampleEventTypes": self.state.sampleEventTypes,
             "recommendedPath": str((Path(__file__).resolve().parents[2] / "data" / "node-events.jsonl")),
+            "autoPolling": self.state.autoPolling,
+            "pollIntervalSeconds": self.state.pollIntervalSeconds,
+            "lastFileOffset": self.state.lastFileOffset,
         }
 
     def ingest_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -107,6 +118,29 @@ class NodeSideCollector:
         with file_path.open("r", encoding="utf-8") as handle:
             return self.ingest_lines(handle)
 
+    def poll_jsonl_file(self, path: str | Path | None = None) -> list[dict[str, Any]]:
+        file_path = Path(path or self.state.source_path or self.describe()["recommendedPath"])
+        self.state.source_path = str(file_path)
+        if not file_path.exists():
+            self.state.lastError = f"source not found: {file_path}"
+            return []
+
+        offset = self._offsets.get(str(file_path), 0)
+        file_size = file_path.stat().st_size
+        if file_size < offset:
+            offset = 0
+
+        results: list[dict[str, Any]] = []
+        with file_path.open("r", encoding="utf-8") as handle:
+            handle.seek(offset)
+            results = self.ingest_lines(handle)
+            self._offsets[str(file_path)] = handle.tell()
+
+        self.state.lastFileOffset = self._offsets[str(file_path)]
+        if results:
+            self.state.lastError = None
+        return results
+
     def sample_jsonl(self) -> str:
         sample_events = [
             {
@@ -142,3 +176,28 @@ class NodeSideCollector:
             },
         ]
         return "\n".join(json.dumps(item, ensure_ascii=False) for item in sample_events) + "\n"
+
+
+class NodeCollectorRuntimeService:
+    def __init__(self, collector: NodeSideCollector):
+        self.collector = collector
+        self._task: asyncio.Task | None = None
+
+    async def start(self) -> None:
+        if not self.collector.state.enabled:
+            return
+        if self._task is None:
+            self._task = asyncio.create_task(self._run(), name="openclaw-node-collector")
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+
+    async def _run(self) -> None:
+        interval = max(2, int(self.collector.config.poll_interval_seconds))
+        while True:
+            await asyncio.to_thread(self.collector.poll_jsonl_file)
+            await asyncio.sleep(interval)
