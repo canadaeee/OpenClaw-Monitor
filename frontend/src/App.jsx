@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const initialState = {
+const initialOverview = {
   generatedAt: null,
   dataLatencySeconds: null,
   agentOnlineCount: 0,
@@ -39,7 +39,7 @@ const pageMeta = {
   },
   agents: {
     title: 'Agent 观察',
-    description: '查看执行单元的在线状态、运行状态与今日消耗情况。',
+    description: '查看执行单元的连接状态、运行状态与今日消耗情况。',
   },
   tasks: {
     title: '任务列表',
@@ -59,70 +59,42 @@ const pageMeta = {
   },
 }
 
+const initialGatewayDraft = {
+  enabled: 'true',
+  mode: 'local-first',
+  defaultPort: '18789',
+  discoveryPorts: '18789',
+  baseUrl: '',
+  origin: '',
+  remoteUrl: '',
+  sessionKey: 'agent:main:main',
+  probeIntervalSeconds: '15',
+  token: '',
+  password: '',
+}
+
 export default function App() {
-  const [overview, setOverview] = useState(initialState)
+  const [overview, setOverview] = useState(initialOverview)
   const [agents, setAgents] = useState([])
-  const [alerts, setAlerts] = useState([])
   const [tasks, setTasks] = useState([])
+  const [alerts, setAlerts] = useState([])
+  const [events, setEvents] = useState([])
   const [status, setStatus] = useState('loading')
   const [activePage, setActivePage] = useState('overview')
-  const [gatewayStatus, setGatewayStatus] = useState(null)
-  const [gatewayDraft, setGatewayDraft] = useState(null)
-  const [gatewayMessage, setGatewayMessage] = useState('')
-  const [gatewayOpen, setGatewayOpen] = useState(false)
   const [themeMode, setThemeMode] = useState(() => {
     if (typeof window === 'undefined') {
       return 'system'
     }
     return window.localStorage.getItem('openclaw-monitor-theme') ?? 'system'
   })
+  const [gatewayStatus, setGatewayStatus] = useState(null)
+  const [gatewayDraft, setGatewayDraft] = useState(initialGatewayDraft)
+  const [gatewayMessage, setGatewayMessage] = useState('')
+  const [gatewayOpen, setGatewayOpen] = useState(false)
+  const [nodeCollectorStatus, setNodeCollectorStatus] = useState(null)
 
   useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const [overviewRes, agentsRes, alertsRes, tasksRes] = await Promise.all([
-          fetch('/api/overview'),
-          fetch('/api/agents'),
-          fetch('/api/alerts'),
-          fetch('/api/tasks'),
-        ])
-
-        const [overviewJson, agentsJson, alertsJson, tasksJson] = await Promise.all([
-          overviewRes.json(),
-          agentsRes.json(),
-          alertsRes.json(),
-          tasksRes.json(),
-        ])
-
-        setOverview(overviewJson)
-        setAgents(agentsJson.items ?? [])
-        setAlerts(alertsJson.items ?? [])
-        setTasks(tasksJson.items ?? [])
-        setStatus('ready')
-      } catch {
-        setStatus('error')
-      }
-    }
-
-    async function loadGateway() {
-      try {
-        const [statusRes, configRes] = await Promise.all([
-          fetch('/api/gateway/status'),
-          fetch('/api/gateway/config'),
-        ])
-        const [statusJson, configJson] = await Promise.all([
-          statusRes.json(),
-          configRes.json(),
-        ])
-        setGatewayStatus(statusJson)
-        setGatewayDraft(toGatewayDraft(configJson))
-      } catch {
-        setGatewayMessage('Gateway 配置读取失败')
-      }
-    }
-
-    loadDashboard()
-    loadGateway()
+    void loadAll()
   }, [])
 
   useEffect(() => {
@@ -134,6 +106,42 @@ export default function App() {
     document.documentElement.lang = 'zh-CN'
     window.localStorage.setItem('openclaw-monitor-theme', themeMode)
   }, [themeMode])
+
+  async function loadAll() {
+    try {
+      const [
+        overviewJson,
+        agentsJson,
+        tasksJson,
+        alertsJson,
+        eventsJson,
+        gatewayStatusJson,
+        gatewayConfigJson,
+        nodeCollectorJson,
+      ] = await Promise.all([
+        fetchJson('/api/overview'),
+        fetchJson('/api/agents'),
+        fetchJson('/api/tasks'),
+        fetchJson('/api/alerts'),
+        fetchJson('/api/events'),
+        fetchJson('/api/gateway/status'),
+        fetchJson('/api/gateway/config'),
+        fetchJson('/api/node-collector/status'),
+      ])
+
+      setOverview(overviewJson)
+      setAgents(agentsJson.items ?? [])
+      setTasks(tasksJson.items ?? [])
+      setAlerts(alertsJson.items ?? [])
+      setEvents(eventsJson.items ?? [])
+      setGatewayStatus(gatewayStatusJson)
+      setGatewayDraft(toGatewayDraft(gatewayConfigJson))
+      setNodeCollectorStatus(nodeCollectorJson)
+      setStatus('ready')
+    } catch {
+      setStatus('error')
+    }
+  }
 
   const gatewayLabel = getGatewayLabel()
 
@@ -150,8 +158,8 @@ export default function App() {
         <nav className="nav-menu" aria-label="主导航">
           {navItems.map((item) => (
             <button
-              type="button"
               key={item.id}
+              type="button"
               className={activePage === item.id ? 'nav-link active' : 'nav-link'}
               onClick={() => setActivePage(item.id)}
             >
@@ -213,16 +221,18 @@ export default function App() {
             tasks={tasks}
             agents={agents}
             alerts={alerts}
+            events={events}
             gatewayLabel={gatewayLabel}
+            nodeCollectorStatus={nodeCollectorStatus}
           />
         )}
         {activePage === 'agents' && <AgentsPage agents={agents} overview={overview} />}
         {activePage === 'tasks' && <TasksPage tasks={tasks} />}
         {activePage === 'token' && <TokenPage overview={overview} tasks={tasks} agents={agents} />}
-        {activePage === 'events' && <EventsPage tasks={tasks} alerts={alerts} agents={agents} />}
+        {activePage === 'events' && <EventsPage events={events} />}
         {activePage === 'alerts' && <AlertsPage alerts={alerts} overview={overview} />}
 
-        {gatewayOpen && gatewayDraft && (
+        {gatewayOpen && (
           <GatewayModal
             draft={gatewayDraft}
             message={gatewayMessage}
@@ -232,17 +242,22 @@ export default function App() {
             }}
             onChange={(patch) => setGatewayDraft((current) => ({ ...current, ...patch }))}
             onSave={async () => {
-              const payload = fromGatewayDraft(gatewayDraft)
-              const response = await fetch('/api/gateway/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-              })
-              const json = await response.json()
-              const statusRes = await fetch('/api/gateway/status')
-              setGatewayStatus(await statusRes.json())
-              setGatewayDraft(toGatewayDraft(json.config))
-              setGatewayMessage('Gateway 配置已保存')
+              try {
+                const response = await fetch('/api/gateway/config', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(fromGatewayDraft(gatewayDraft)),
+                })
+                if (!response.ok) {
+                  throw new Error('save failed')
+                }
+                const payload = await response.json()
+                setGatewayDraft(toGatewayDraft(payload.config))
+                setGatewayStatus(await fetchJson('/api/gateway/status'))
+                setGatewayMessage('Gateway 配置已保存，后端已重新加载探测配置。')
+              } catch {
+                setGatewayMessage('Gateway 配置保存失败，请检查输入后重试。')
+              }
             }}
           />
         )}
@@ -253,9 +268,8 @@ export default function App() {
 
 function PageHeader({ activePage, status, snapshot, gatewayStatus, onOpenGateway }) {
   const page = pageMeta[activePage]
-  const runtime = gatewayStatus?.runtime || {}
+  const runtime = gatewayStatus?.runtime ?? {}
   const detected = Boolean(runtime.detected)
-  const detectState = detected ? '已发现 Gateway' : '未发现 Gateway'
 
   return (
     <header className="header">
@@ -268,13 +282,13 @@ function PageHeader({ activePage, status, snapshot, gatewayStatus, onOpenGateway
           <span className={`status-dot ${status}`} />
           <span>{statusText(status)}</span>
         </div>
+        <div className={detected ? 'status-badge gateway-ok' : 'status-badge gateway-warn'}>
+          <span className={`status-dot ${detected ? 'ready' : ''}`} />
+          <span>{detected ? '已发现 Gateway' : '未发现 Gateway'}</span>
+        </div>
         <button type="button" className="btn btn-outline" onClick={onOpenGateway}>
           Gateway 设置
         </button>
-        <div className={detected ? 'status-badge gateway-ok' : 'status-badge gateway-warn'}>
-          <span className={`status-dot ${detected ? 'ready' : ''}`} />
-          <span>{detectState}</span>
-        </div>
         <button type="button" className="btn btn-outline">
           默认端口 12888
         </button>
@@ -286,112 +300,24 @@ function PageHeader({ activePage, status, snapshot, gatewayStatus, onOpenGateway
   )
 }
 
-function GatewayModal({ draft, message, onClose, onChange, onSave }) {
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <section className="modal-card" onClick={(event) => event.stopPropagation()}>
-        <div className="panel-head">
-          <div>
-            <h2>Gateway 设置</h2>
-            <p>自动探测默认优先使用 18789，可补充自定义端口、Origin、认证信息或远程地址。</p>
-          </div>
-          <button type="button" className="btn btn-outline" onClick={onClose}>
-            关闭
-          </button>
-        </div>
-
-        <div className="form-grid">
-          <label className="form-field">
-            <span>启用自动捕捉</span>
-            <select value={draft.enabled} onChange={(e) => onChange({ enabled: e.target.value })}>
-              <option value="true">启用</option>
-              <option value="false">禁用</option>
-            </select>
-          </label>
-
-          <label className="form-field">
-            <span>自动探测模式</span>
-            <select value={draft.mode} onChange={(e) => onChange({ mode: e.target.value })}>
-              <option value="local-first">本机优先</option>
-              <option value="manual">手动指定</option>
-            </select>
-          </label>
-
-          <label className="form-field">
-            <span>默认端口</span>
-            <input value={draft.defaultPort} onChange={(e) => onChange({ defaultPort: e.target.value })} />
-          </label>
-
-          <label className="form-field">
-            <span>探测端口列表</span>
-            <input value={draft.discoveryPorts} onChange={(e) => onChange({ discoveryPorts: e.target.value })} />
-          </label>
-
-          <label className="form-field form-field-wide">
-            <span>手动指定地址</span>
-            <input value={draft.baseUrl} onChange={(e) => onChange({ baseUrl: e.target.value })} placeholder="例如 http://127.0.0.1:18789" />
-          </label>
-
-          <label className="form-field form-field-wide">
-            <span>Origin 覆盖（可选）</span>
-            <input value={draft.origin} onChange={(e) => onChange({ origin: e.target.value })} placeholder="留空则自动使用 Gateway 地址" />
-          </label>
-
-          <label className="form-field form-field-wide">
-            <span>远程候选地址</span>
-            <input value={draft.remoteUrl} onChange={(e) => onChange({ remoteUrl: e.target.value })} placeholder="例如 https://example.tailnet.ts.net" />
-          </label>
-
-          <label className="form-field">
-            <span>会话键</span>
-            <input value={draft.sessionKey} onChange={(e) => onChange({ sessionKey: e.target.value })} />
-          </label>
-
-          <label className="form-field">
-            <span>探测间隔（秒）</span>
-            <input value={draft.probeIntervalSeconds} onChange={(e) => onChange({ probeIntervalSeconds: e.target.value })} />
-          </label>
-
-          <label className="form-field">
-            <span>Gateway Token</span>
-            <input value={draft.token} onChange={(e) => onChange({ token: e.target.value })} placeholder="可选，用于需要 token 的 Gateway" />
-          </label>
-
-          <label className="form-field">
-            <span>Password</span>
-            <input type="password" value={draft.password} onChange={(e) => onChange({ password: e.target.value })} placeholder="可选，不会在页面回显" />
-          </label>
-        </div>
-
-        <div className="modal-footer">
-          <span className="form-message">{message || '保存后后端会立即重新加载 Gateway 探测配置。'}</span>
-          <button type="button" className="btn btn-primary" onClick={onSave}>
-            保存配置
-          </button>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
+function OverviewPage({ overview, tasks, agents, alerts, events, gatewayLabel, nodeCollectorStatus }) {
   const statCards = [
     {
       label: '在线 Agent',
       value: formatValue(overview.agentOnlineCount),
-      change: `${overview.agentOfflineCount} 个离线`,
+      change: `${formatValue(overview.agentOfflineCount)} 个离线`,
       tone: overview.agentOfflineCount > 0 ? 'danger' : 'success',
     },
     {
       label: '在线节点',
       value: formatValue(overview.nodeOnlineCount),
-      change: `${overview.nodeOfflineCount} 个离线`,
+      change: `${formatValue(overview.nodeOfflineCount)} 个离线`,
       tone: overview.nodeOfflineCount > 0 ? 'danger' : 'success',
     },
     {
       label: '运行中任务',
       value: formatValue(overview.taskRunningCount),
-      change: `${overview.taskWaitingCount} 个等待中`,
+      change: `${formatValue(overview.taskWaitingCount)} 个等待中`,
       tone: overview.taskWaitingCount > 0 ? 'warning' : 'success',
     },
     {
@@ -406,10 +332,11 @@ function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
     <>
       <section className="hero-banner">
         <div>
-          <p className="banner-tag">{gatewayLabel} / 跨端查看</p>
+          <p className="banner-tag">{gatewayLabel} / 本机优先 / 只读观测</p>
           <h2>让任务流转、Agent 活跃度和故障现场都能被看见</h2>
           <p className="banner-text">
-            只读观测，不介入调度。通过统一的事件、状态推导和告警视图，把 OpenClaw 的黑盒执行过程变成可追踪、可定位、可回放的监控面板。
+            不介入调度，只做黑盒可视化。通过统一事件、状态推导和告警视图，把 OpenClaw
+            的运行过程变成可追踪、可定位、可回放的观测界面。
           </p>
         </div>
         <div className="banner-meta">
@@ -443,6 +370,42 @@ function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
         ))}
       </section>
 
+      <section className="collector-strip">
+        <article className="panel collector-panel">
+          <div className="panel-head">
+            <div>
+              <h2>Node Collector</h2>
+              <p>本机 node-side collector 运行状态与最近采集结果。</p>
+            </div>
+            <span className="panel-note">
+              {nodeCollectorStatus?.autoPolling ? '自动轮询中' : '未启用轮询'}
+            </span>
+          </div>
+          <div className="collector-grid">
+            <div className="summary-card">
+              <span>采集模式</span>
+              <strong>{nodeCollectorStatus?.mode ?? '--'}</strong>
+              <p>{nodeCollectorStatus?.sourceType ?? 'jsonl'}</p>
+            </div>
+            <div className="summary-card">
+              <span>累计导入</span>
+              <strong>{formatValue(nodeCollectorStatus?.ingestedCount)}</strong>
+              <p>最近一次导入：{formatDateTime(nodeCollectorStatus?.lastIngestAt)}</p>
+            </div>
+            <div className="summary-card">
+              <span>轮询间隔</span>
+              <strong>{formatValue(nodeCollectorStatus?.pollIntervalSeconds)} 秒</strong>
+              <p>文件偏移：{formatValue(nodeCollectorStatus?.lastFileOffset)}</p>
+            </div>
+            <div className="summary-card">
+              <span>数据源</span>
+              <strong>{shortPath(nodeCollectorStatus?.sourcePath || nodeCollectorStatus?.recommendedPath)}</strong>
+              <p>{nodeCollectorStatus?.lastError || '当前未报告错误'}</p>
+            </div>
+          </div>
+        </article>
+      </section>
+
       <section className="content-columns">
         <section className="panel wide">
           <div className="panel-head">
@@ -458,7 +421,7 @@ function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
                 <div className="table-main">
                   <strong>{task.id}</strong>
                   <span>
-                    {task.taskType} / {task.executorNodeId}
+                    {task.taskType || '未命名任务'} / {task.executorNodeId || '未知节点'}
                   </span>
                 </div>
                 <div className="table-meta">
@@ -468,6 +431,7 @@ function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
                 </div>
               </div>
             ))}
+            {tasks.length === 0 && <EmptyState text="当前还没有任务数据。" />}
           </div>
         </section>
 
@@ -483,15 +447,18 @@ function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
             {agents.map((agent) => (
               <div className="stack-item" key={agent.id}>
                 <div>
-                  <strong>{agent.name}</strong>
-                  <p>{agent.derivedStatusReason}</p>
+                  <strong>{agent.name || agent.id}</strong>
+                  <p>{agent.derivedStatusReason || '暂无状态说明'}</p>
                 </div>
                 <div className="stack-tags">
-                  <span className={`badge ${agent.connectivityStatus}`}>{connectivityLabel(agent.connectivityStatus)}</span>
+                  <span className={`badge ${agent.connectivityStatus}`}>
+                    {connectivityLabel(agent.connectivityStatus)}
+                  </span>
                   <span className="badge subtle">{statusLabel(agent.runtimeStatus)}</span>
                 </div>
               </div>
             ))}
+            {agents.length === 0 && <EmptyState text="当前还没有 Agent 数据。" />}
           </div>
         </section>
       </section>
@@ -518,6 +485,7 @@ function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
                 </div>
               </div>
             ))}
+            {alerts.length === 0 && <EmptyState text="当前没有活跃告警。" />}
           </div>
         </section>
 
@@ -527,6 +495,7 @@ function OverviewPage({ overview, tasks, agents, alerts, gatewayLabel }) {
               <h2>健康摘要</h2>
               <p>节点、任务与成本当前态势</p>
             </div>
+            <span className="panel-note">{events.length} 条事件</span>
           </div>
           <div className="summary-grid">
             <div className="summary-card">
@@ -560,53 +529,27 @@ function AgentsPage({ agents, overview }) {
   return (
     <>
       <section className="grid-dashboard">
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(agents.length)}</div>
-            <div className="stat-label">Agent 总数</div>
-          </div>
-          <div className="stat-change neutral">
-            <span className="change-dot" />
-            <span>{formatValue(overview.agentOnlineCount)} 个在线</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(overview.agentOfflineCount)}</div>
-            <div className="stat-label">离线 Agent</div>
-          </div>
-          <div className="stat-change danger">
-            <span className="change-dot" />
-            <span>需要优先排查</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(agents.filter((item) => item.runtimeStatus === 'running').length)}</div>
-            <div className="stat-label">运行中</div>
-          </div>
-          <div className="stat-change success">
-            <span className="change-dot" />
-            <span>执行链路活跃</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(agents.reduce((sum, item) => sum + (item.todayTokenTotal || 0), 0))}</div>
-            <div className="stat-label">今日 Agent Token</div>
-          </div>
-          <div className="stat-change neutral">
-            <span className="change-dot" />
-            <span>按 Agent 聚合</span>
-          </div>
-        </article>
+        <StatCard label="Agent 总数" value={agents.length} note={`${formatValue(overview.agentOnlineCount)} 个在线`} tone="neutral" />
+        <StatCard label="离线 Agent" value={overview.agentOfflineCount} note="需要优先排查" tone="danger" />
+        <StatCard
+          label="运行中"
+          value={agents.filter((item) => item.runtimeStatus === 'running').length}
+          note="执行链路活跃"
+          tone="success"
+        />
+        <StatCard
+          label="今日 Agent Token"
+          value={agents.reduce((sum, item) => sum + (item.todayTokenTotal || 0), 0)}
+          note="按 Agent 聚合"
+          tone="neutral"
+        />
       </section>
 
       <section className="panel">
         <div className="panel-head">
           <div>
             <h2>Agent 观察列表</h2>
-            <p>用于定位谁在线、谁正在执行、谁需要恢复</p>
+            <p>用于定位谁在线、谁正在执行、谁需要恢复。</p>
           </div>
           <span className="panel-note">{agents.length} 个 Agent</span>
         </div>
@@ -614,16 +557,19 @@ function AgentsPage({ agents, overview }) {
           {agents.map((agent) => (
             <div className="stack-item" key={agent.id}>
               <div>
-                <strong>{agent.name}</strong>
-                <p>{agent.derivedStatusReason}</p>
+                <strong>{agent.name || agent.id}</strong>
+                <p>{agent.derivedStatusReason || '暂无状态说明'}</p>
               </div>
               <div className="stack-tags">
-                <span className={`badge ${agent.connectivityStatus}`}>{connectivityLabel(agent.connectivityStatus)}</span>
+                <span className={`badge ${agent.connectivityStatus}`}>
+                  {connectivityLabel(agent.connectivityStatus)}
+                </span>
                 <span className="badge subtle">{statusLabel(agent.runtimeStatus)}</span>
                 <span className="time-text">{formatValue(agent.todayTokenTotal)} Token</span>
               </div>
             </div>
           ))}
+          {agents.length === 0 && <EmptyState text="当前还没有 Agent 数据。" />}
         </div>
       </section>
     </>
@@ -636,7 +582,7 @@ function TasksPage({ tasks }) {
       <div className="panel-head">
         <div>
           <h2>任务列表</h2>
-          <p>聚焦任务生命周期、耗时、Token 与执行节点</p>
+          <p>聚焦任务生命周期、耗时、Token 与执行节点。</p>
         </div>
         <span className="panel-note">{tasks.length} 个任务</span>
       </div>
@@ -646,29 +592,19 @@ function TasksPage({ tasks }) {
             <div className="table-main">
               <strong>{task.id}</strong>
               <span>
-                {task.taskType} / 来源 {task.sourceAgentId} / 执行 {task.executorAgentId}
+                {task.taskType || '未命名任务'} / 来源 {task.sourceAgentId || '--'} / 执行{' '}
+                {task.executorAgentId || '--'}
               </span>
             </div>
             <div className="table-grid">
-              <div className="mini-stat">
-                <span>状态</span>
-                <strong>{statusLabel(task.status)}</strong>
-              </div>
-              <div className="mini-stat">
-                <span>耗时</span>
-                <strong>{formatDuration(task.durationMs)}</strong>
-              </div>
-              <div className="mini-stat">
-                <span>Token</span>
-                <strong>{formatValue(task.tokenUsage?.total)}</strong>
-              </div>
-              <div className="mini-stat">
-                <span>节点</span>
-                <strong>{task.executorNodeId}</strong>
-              </div>
+              <MiniStat label="状态" value={statusLabel(task.status)} />
+              <MiniStat label="耗时" value={formatDuration(task.durationMs)} />
+              <MiniStat label="Token" value={formatValue(task.tokenUsage?.total)} />
+              <MiniStat label="节点" value={task.executorNodeId || '--'} />
             </div>
           </div>
         ))}
+        {tasks.length === 0 && <EmptyState text="当前还没有任务数据。" />}
       </div>
     </section>
   )
@@ -680,46 +616,20 @@ function TokenPage({ overview, tasks, agents }) {
   return (
     <>
       <section className="grid-dashboard">
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(overview.todayTokenTotal)}</div>
-            <div className="stat-label">今日总 Token</div>
-          </div>
-          <div className="stat-change neutral">
-            <span className="change-dot" />
-            <span>{formatCurrency(overview.todayEstimatedCost)}</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(tasks.reduce((sum, task) => sum + (task.tokenUsage?.input || 0), 0))}</div>
-            <div className="stat-label">输入 Token</div>
-          </div>
-          <div className="stat-change success">
-            <span className="change-dot" />
-            <span>请求侧消耗</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(tasks.reduce((sum, task) => sum + (task.tokenUsage?.output || 0), 0))}</div>
-            <div className="stat-label">输出 Token</div>
-          </div>
-          <div className="stat-change warning">
-            <span className="change-dot" />
-            <span>响应侧消耗</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatCurrency(overview.todayEstimatedCost)}</div>
-            <div className="stat-label">预计成本</div>
-          </div>
-          <div className="stat-change neutral">
-            <span className="change-dot" />
-            <span>美元折算</span>
-          </div>
-        </article>
+        <StatCard label="今日总 Token" value={overview.todayTokenTotal} note={formatCurrency(overview.todayEstimatedCost)} tone="neutral" />
+        <StatCard
+          label="输入 Token"
+          value={tasks.reduce((sum, task) => sum + (task.tokenUsage?.input || 0), 0)}
+          note="请求侧消耗"
+          tone="success"
+        />
+        <StatCard
+          label="输出 Token"
+          value={tasks.reduce((sum, task) => sum + (task.tokenUsage?.output || 0), 0)}
+          note="响应侧消耗"
+          tone="warning"
+        />
+        <StatCard label="预估成本" value={formatCurrency(overview.todayEstimatedCost)} note="美元折算" tone="neutral" />
       </section>
 
       <section className="content-columns lower">
@@ -727,7 +637,7 @@ function TokenPage({ overview, tasks, agents }) {
           <div className="panel-head">
             <div>
               <h2>按任务查看</h2>
-              <p>识别哪些任务产生了主要消耗</p>
+              <p>识别哪些任务产生了主要消耗。</p>
             </div>
           </div>
           <div className="stack-list">
@@ -735,7 +645,7 @@ function TokenPage({ overview, tasks, agents }) {
               <div className="stack-item" key={task.id}>
                 <div>
                   <strong>{task.id}</strong>
-                  <p>{task.taskType}</p>
+                  <p>{task.taskType || '未命名任务'}</p>
                 </div>
                 <div className="stack-tags">
                   <span className="time-text">{formatValue(task.tokenUsage?.input)} 输入</span>
@@ -744,6 +654,7 @@ function TokenPage({ overview, tasks, agents }) {
                 </div>
               </div>
             ))}
+            {tasks.length === 0 && <EmptyState text="当前还没有 Token 数据。" />}
           </div>
         </section>
 
@@ -751,14 +662,14 @@ function TokenPage({ overview, tasks, agents }) {
           <div className="panel-head">
             <div>
               <h2>按 Agent 查看</h2>
-              <p>快速识别高消耗执行单元</p>
+              <p>快速识别高消耗执行单元。</p>
             </div>
           </div>
           <div className="stack-list">
             {topAgents.map((agent) => (
               <div className="stack-item" key={agent.id}>
                 <div>
-                  <strong>{agent.name}</strong>
+                  <strong>{agent.name || agent.id}</strong>
                   <p>{statusLabel(agent.runtimeStatus)}</p>
                 </div>
                 <div className="stack-tags">
@@ -766,6 +677,7 @@ function TokenPage({ overview, tasks, agents }) {
                 </div>
               </div>
             ))}
+            {topAgents.length === 0 && <EmptyState text="当前还没有 Agent Token 排名。" />}
           </div>
         </section>
       </section>
@@ -773,50 +685,31 @@ function TokenPage({ overview, tasks, agents }) {
   )
 }
 
-function EventsPage({ tasks, alerts, agents }) {
-  const events = [
-    {
-      time: '刚刚',
-      type: 'task_started',
-      title: tasks[0] ? `${tasks[0].id} 开始执行` : '暂无任务启动事件',
-      detail: tasks[0] ? `${tasks[0].executorAgentId} 正在 ${tasks[0].executorNodeId} 上执行任务` : '等待更多事件数据',
-    },
-    {
-      time: '1 分钟前',
-      type: 'agent_heartbeat',
-      title: agents[0] ? `${agents[0].name} 心跳上报` : '暂无 Agent 心跳事件',
-      detail: agents[0] ? agents[0].derivedStatusReason : '等待更多事件数据',
-    },
-    {
-      time: '3 分钟前',
-      type: 'alert_triggered',
-      title: alerts[0] ? alerts[0].title : '暂无告警事件',
-      detail: alerts[0] ? alerts[0].description : '等待更多事件数据',
-    },
-  ]
-
+function EventsPage({ events }) {
   return (
     <section className="panel">
       <div className="panel-head">
         <div>
           <h2>事件时间线</h2>
-          <p>展示任务、Agent、告警等关键事件的标准化记录</p>
+          <p>展示任务、Agent、告警等关键事件的标准化记录。</p>
         </div>
+        <span className="panel-note">{events.length} 条事件</span>
       </div>
       <div className="timeline">
         {events.map((event) => (
-          <div className="timeline-item" key={`${event.time}-${event.type}`}>
+          <div className="timeline-item" key={event.id || `${event.eventType}-${event.occurredAt}`}>
             <div className="timeline-dot" />
             <div className="timeline-body">
               <div className="timeline-top">
-                <strong>{event.title}</strong>
-                <span className="time-text">{event.time}</span>
+                <strong>{event.title || event.eventType}</strong>
+                <span className="time-text">{formatDateTime(event.occurredAt)}</span>
               </div>
-              <p>{event.detail}</p>
-              <span className="badge subtle">{event.type}</span>
+              <p>{event.detail || '暂无详细描述。'}</p>
+              <span className="badge subtle">{event.eventType}</span>
             </div>
           </div>
         ))}
+        {events.length === 0 && <EmptyState text="当前还没有事件数据。" />}
       </div>
     </section>
   )
@@ -826,53 +719,17 @@ function AlertsPage({ alerts, overview }) {
   return (
     <>
       <section className="grid-dashboard">
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(alerts.length)}</div>
-            <div className="stat-label">当前告警</div>
-          </div>
-          <div className="stat-change danger">
-            <span className="change-dot" />
-            <span>待处理项</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(overview.taskFailedCount)}</div>
-            <div className="stat-label">失败任务相关</div>
-          </div>
-          <div className="stat-change warning">
-            <span className="change-dot" />
-            <span>需结合任务视图排查</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(overview.agentOfflineCount)}</div>
-            <div className="stat-label">离线相关</div>
-          </div>
-          <div className="stat-change danger">
-            <span className="change-dot" />
-            <span>Agent 连接性检查</span>
-          </div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-header">
-            <div className="stat-value">{formatValue(overview.todayErrorCount)}</div>
-            <div className="stat-label">今日错误事件</div>
-          </div>
-          <div className="stat-change neutral">
-            <span className="change-dot" />
-            <span>排障证据基础</span>
-          </div>
-        </article>
+        <StatCard label="当前告警" value={alerts.length} note="待处理项" tone="danger" />
+        <StatCard label="失败任务相关" value={overview.taskFailedCount} note="需结合任务视图排查" tone="warning" />
+        <StatCard label="离线相关" value={overview.agentOfflineCount} note="检查 Agent 连通性" tone="danger" />
+        <StatCard label="今日错误事件" value={overview.todayErrorCount} note="排障证据基础" tone="neutral" />
       </section>
 
       <section className="panel">
         <div className="panel-head">
           <div>
             <h2>告警列表</h2>
-            <p>集中查看当前打开的故障项与触发时间</p>
+            <p>集中查看当前打开的故障项与触发时间。</p>
           </div>
           <span className="panel-note">{alerts.length} 条告警</span>
         </div>
@@ -889,14 +746,163 @@ function AlertsPage({ alerts, overview }) {
               </div>
             </div>
           ))}
+          {alerts.length === 0 && <EmptyState text="当前没有告警。" />}
         </div>
       </section>
     </>
   )
 }
 
+function GatewayModal({ draft, message, onClose, onChange, onSave }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <section className="modal-card" onClick={(event) => event.stopPropagation()}>
+        <div className="panel-head">
+          <div>
+            <h2>Gateway 设置</h2>
+            <p>默认优先探测本机 18789，也支持自定义端口、Origin、认证信息和远程候选地址。</p>
+          </div>
+          <button type="button" className="btn btn-outline" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+
+        <div className="form-grid">
+          <FieldSelect
+            label="启用自动捕捉"
+            value={draft.enabled}
+            onChange={(value) => onChange({ enabled: value })}
+            options={[
+              { value: 'true', label: '启用' },
+              { value: 'false', label: '禁用' },
+            ]}
+          />
+          <FieldSelect
+            label="自动探测模式"
+            value={draft.mode}
+            onChange={(value) => onChange({ mode: value })}
+            options={[
+              { value: 'local-first', label: '本机优先' },
+              { value: 'manual', label: '手动指定' },
+            ]}
+          />
+          <FieldInput label="默认端口" value={draft.defaultPort} onChange={(value) => onChange({ defaultPort: value })} />
+          <FieldInput label="探测端口列表" value={draft.discoveryPorts} onChange={(value) => onChange({ discoveryPorts: value })} />
+          <FieldInput
+            label="手动指定地址"
+            value={draft.baseUrl}
+            onChange={(value) => onChange({ baseUrl: value })}
+            placeholder="例如 http://127.0.0.1:18789"
+            wide
+          />
+          <FieldInput
+            label="Origin 覆盖（可选）"
+            value={draft.origin}
+            onChange={(value) => onChange({ origin: value })}
+            placeholder="留空则自动使用 Gateway 地址"
+            wide
+          />
+          <FieldInput
+            label="远程候选地址"
+            value={draft.remoteUrl}
+            onChange={(value) => onChange({ remoteUrl: value })}
+            placeholder="例如 https://example.tailnet.ts.net"
+            wide
+          />
+          <FieldInput label="会话键" value={draft.sessionKey} onChange={(value) => onChange({ sessionKey: value })} />
+          <FieldInput
+            label="探测间隔（秒）"
+            value={draft.probeIntervalSeconds}
+            onChange={(value) => onChange({ probeIntervalSeconds: value })}
+          />
+          <FieldInput
+            label="Gateway Token"
+            value={draft.token}
+            onChange={(value) => onChange({ token: value })}
+            placeholder="可选"
+          />
+          <FieldInput
+            label="Password"
+            type="password"
+            value={draft.password}
+            onChange={(value) => onChange({ password: value })}
+            placeholder="可选"
+          />
+        </div>
+
+        <div className="modal-footer">
+          <span className="form-message">{message || '保存后后端会立即重新加载 Gateway 探测配置。'}</span>
+          <button type="button" className="btn btn-primary" onClick={onSave}>
+            保存配置
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function StatCard({ label, value, note, tone }) {
+  return (
+    <article className="stat-card">
+      <div className="stat-header">
+        <div className="stat-value">{typeof value === 'string' ? value : formatValue(value)}</div>
+        <div className="stat-label">{label}</div>
+      </div>
+      <div className={`stat-change ${tone}`}>
+        <span className="change-dot" />
+        <span>{note}</span>
+      </div>
+    </article>
+  )
+}
+
+function MiniStat({ label, value }) {
+  return (
+    <div className="mini-stat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
+}
+
+function FieldInput({ label, value, onChange, placeholder, type = 'text', wide = false }) {
+  return (
+    <label className={wide ? 'form-field form-field-wide' : 'form-field'}>
+      <span>{label}</span>
+      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+    </label>
+  )
+}
+
+function FieldSelect({ label, value, onChange, options }) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function EmptyState({ text }) {
+  return <div className="empty-state">{text}</div>
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Request failed: ${url}`)
+  }
+  return response.json()
+}
+
 function formatValue(value) {
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || value === '') {
     return '--'
   }
   if (typeof value === 'number') {
@@ -982,7 +988,7 @@ function statusLabel(status) {
     case 'unknown':
       return '未知'
     default:
-      return status ?? '--'
+      return status || '--'
   }
 }
 
@@ -1003,7 +1009,10 @@ function severityLabel(severity) {
   if (severity === 'warning') {
     return '警告'
   }
-  return severity ?? '--'
+  if (severity === 'info') {
+    return '信息'
+  }
+  return severity || '--'
 }
 
 function calcRatio(online, offline) {
@@ -1012,6 +1021,18 @@ function calcRatio(online, offline) {
     return '--'
   }
   return `${Math.round((online / total) * 100)}%`
+}
+
+function shortPath(path) {
+  if (!path) {
+    return '--'
+  }
+  const normalized = String(path).replaceAll('\\', '/')
+  const segments = normalized.split('/')
+  if (segments.length <= 3) {
+    return normalized
+  }
+  return segments.slice(-3).join('/')
 }
 
 function getGatewayLabel() {

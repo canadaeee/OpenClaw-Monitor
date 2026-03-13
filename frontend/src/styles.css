@@ -374,6 +374,20 @@ button {
   margin-bottom: 24px;
 }
 
+.collector-strip {
+  margin-bottom: 24px;
+}
+
+.collector-panel {
+  padding-bottom: 18px;
+}
+
+.collector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .stat-card,
 .panel,
 .summary-card {
@@ -643,6 +657,14 @@ button {
   line-height: 1.6;
 }
 
+.empty-state {
+  padding: 18px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -703,6 +725,7 @@ button {
 
 @media (max-width: 1200px) {
   .grid-dashboard,
+  .collector-grid,
   .content-columns,
   .content-columns.lower,
   .hero-banner {
