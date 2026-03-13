@@ -8,7 +8,7 @@ BRANCH="main"
 echo "[1/3] Updating repository"
 git -C "$PROJECT_ROOT" fetch origin "$BRANCH"
 git -C "$PROJECT_ROOT" checkout "$BRANCH"
-git -C "$PROJECT_ROOT" pull --ff-only origin "$BRANCH"
+git -C "$PROJECT_ROOT" reset --hard "origin/$BRANCH"
 
 echo "[2/3] Re-running installer"
 bash "$SCRIPT_DIR/install-macos.sh"
