@@ -7,6 +7,9 @@ $frontendDir = Join-Path $projectRoot "frontend"
 Write-Host "[1/5] Checking runtime requirements"
 python --version | Out-Null
 npm --version | Out-Null
+python -m pip --version | Out-Null
+if (-not (Test-Path (Join-Path $backendDir "requirements.txt"))) { throw "Missing backend/requirements.txt" }
+if (-not (Test-Path (Join-Path $frontendDir "package.json"))) { throw "Missing frontend/package.json" }
 
 Write-Host "[2/5] Installing backend dependencies"
 Set-Location $backendDir

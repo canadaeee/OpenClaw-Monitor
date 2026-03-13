@@ -9,6 +9,9 @@ FRONTEND_DIR="$PROJECT_ROOT/frontend"
 echo "[1/5] Checking runtime requirements"
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm is required"; exit 1; }
+python3 -m pip --version >/dev/null 2>&1 || { echo "python3-pip is required"; exit 1; }
+[[ -f "$BACKEND_DIR/requirements.txt" ]] || { echo "Missing backend/requirements.txt"; exit 1; }
+[[ -f "$FRONTEND_DIR/package.json" ]] || { echo "Missing frontend/package.json"; exit 1; }
 
 echo "[2/5] Installing backend dependencies"
 cd "$BACKEND_DIR"
