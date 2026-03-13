@@ -6,6 +6,7 @@ from .gateway_ws import OpenClawGatewayStream
 from .node_collector import NodeCollectorRuntimeService, NodeSideCollector
 from .schemas import GatewayConfigUpdate, IngestEvent, NodeCollectorIngestFileRequest
 from .settings import load_gateway_settings, save_gateway_settings, settings_to_public_dict
+from .versioning import get_update_status
 
 router = APIRouter(prefix="/api")
 collector = OpenClawCollector(load_gateway_settings())
@@ -19,6 +20,11 @@ gateway_manager = None
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "openclaw-monitor-api", "time": repository.utc_now()}
+
+
+@router.get("/system/update-status")
+def system_update_status() -> dict:
+    return get_update_status()
 
 
 @router.get("/overview")

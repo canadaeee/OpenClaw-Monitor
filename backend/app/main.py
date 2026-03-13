@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import APP_VERSION
 from .api import collector, node_collector_runtime, router
 from .db import init_db
 from .gateway_manager import GatewayManager
@@ -33,7 +34,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="OpenClaw Monitor API",
-    version="0.3.0",
+    version=APP_VERSION,
     description="Read-only observability API for OpenClaw black-box visualization.",
     lifespan=lifespan,
 )

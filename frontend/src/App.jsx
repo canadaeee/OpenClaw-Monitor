@@ -92,6 +92,7 @@ export default function App() {
   const [gatewayMessage, setGatewayMessage] = useState('')
   const [gatewayOpen, setGatewayOpen] = useState(false)
   const [nodeCollectorStatus, setNodeCollectorStatus] = useState(null)
+  const [updateStatus, setUpdateStatus] = useState(null)
 
   useEffect(() => {
     void loadAll()
@@ -118,6 +119,7 @@ export default function App() {
         gatewayStatusJson,
         gatewayConfigJson,
         nodeCollectorJson,
+        updateStatusJson,
       ] = await Promise.all([
         fetchJson('/api/overview'),
         fetchJson('/api/agents'),
@@ -127,6 +129,7 @@ export default function App() {
         fetchJson('/api/gateway/status'),
         fetchJson('/api/gateway/config'),
         fetchJson('/api/node-collector/status'),
+        fetchJson('/api/system/update-status'),
       ])
 
       setOverview(overviewJson)
@@ -137,6 +140,7 @@ export default function App() {
       setGatewayStatus(gatewayStatusJson)
       setGatewayDraft(toGatewayDraft(gatewayConfigJson))
       setNodeCollectorStatus(nodeCollectorJson)
+      setUpdateStatus(updateStatusJson)
       setStatus('ready')
     } catch {
       setStatus('error')
@@ -224,6 +228,7 @@ export default function App() {
             events={events}
             gatewayLabel={gatewayLabel}
             nodeCollectorStatus={nodeCollectorStatus}
+            updateStatus={updateStatus}
           />
         )}
         {activePage === 'agents' && <AgentsPage agents={agents} overview={overview} />}
@@ -300,7 +305,16 @@ function PageHeader({ activePage, status, snapshot, gatewayStatus, onOpenGateway
   )
 }
 
-function OverviewPage({ overview, tasks, agents, alerts, events, gatewayLabel, nodeCollectorStatus }) {
+function OverviewPage({
+  overview,
+  tasks,
+  agents,
+  alerts,
+  events,
+  gatewayLabel,
+  nodeCollectorStatus,
+  updateStatus,
+}) {
   const statCards = [
     {
       label: '在线 Agent',
@@ -330,6 +344,20 @@ function OverviewPage({ overview, tasks, agents, alerts, events, gatewayLabel, n
 
   return (
     <>
+      {updateStatus?.updateAvailable && (
+        <section className="update-banner">
+          <div>
+            <strong>检测到新版本可更新</strong>
+            <p>
+              当前版本 {updateStatus.currentVersion}，远端主分支已有新提交。建议使用
+              <code>{updateStatus.updateCommand}</code>
+              完成更新。
+            </p>
+          </div>
+          <span className="update-badge">需要手动更新</span>
+        </section>
+      )}
+
       <section className="hero-banner">
         <div>
           <p className="banner-tag">{gatewayLabel} / 本机优先 / 只读观测</p>
