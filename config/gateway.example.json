@@ -1,0 +1,29 @@
+{
+  "enabled": false,
+  "base_url": "",
+  "ws_url": "",
+  "origin": "",
+  "session_key": "agent:main:main",
+  "token": "",
+  "password": "",
+  "language": "zh-CN",
+  "auto_capture": true,
+  "mode": "local-first",
+  "discovery_candidates": [
+    {
+      "name": "remote-optional",
+      "base_url": "https://example-openclaw.ts.net",
+      "ws_url": "",
+      "origin": "",
+      "session_key": "agent:main:main",
+      "token": "",
+      "password": "",
+      "priority": 100
+    }
+  ],
+  "default_port": 18789,
+  "discovery_ports": [
+    18789,
+    3000
+  ]
+}

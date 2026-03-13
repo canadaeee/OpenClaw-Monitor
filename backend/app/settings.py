@@ -10,6 +10,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_DIR = BASE_DIR / "config"
 CONFIG_PATH = CONFIG_DIR / "gateway.json"
+CONFIG_TEMPLATE_PATH = CONFIG_DIR / "gateway.example.json"
 
 
 @dataclass
@@ -69,39 +70,11 @@ def load_gateway_settings() -> GatewaySettings:
 def ensure_gateway_config() -> Path:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     if not CONFIG_PATH.exists():
+        template = _default_gateway_config()
+        if CONFIG_TEMPLATE_PATH.exists():
+            template = json.loads(CONFIG_TEMPLATE_PATH.read_text(encoding="utf-8"))
         CONFIG_PATH.write_text(
-            json.dumps(
-                {
-                    "enabled": False,
-                    "auto_capture": True,
-                    "probe_interval_seconds": 15,
-                    "mode": "local-first",
-                    "default_port": 18789,
-                    "discovery_ports": [18789, 3000],
-                    "base_url": "",
-                    "ws_url": "",
-                    "origin": "",
-                    "session_key": "agent:main:main",
-                    "token": "",
-                    "password": "",
-                    "language": "zh-CN",
-                    "discovery_candidates": [
-                        {
-                            "name": "remote-optional",
-                            "base_url": "https://example-openclaw.ts.net",
-                            "ws_url": "",
-                            "origin": "",
-                            "session_key": "agent:main:main",
-                            "token": "",
-                            "password": "",
-                            "priority": 100,
-                        },
-                    ],
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
+            json.dumps(template, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
     return CONFIG_PATH
@@ -190,3 +163,33 @@ def _load_ports(env_value: str | None, fallback: object) -> list[int]:
             ports.append(port)
 
     return ports or [18789]
+
+
+def _default_gateway_config() -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "auto_capture": True,
+        "probe_interval_seconds": 15,
+        "mode": "local-first",
+        "default_port": 18789,
+        "discovery_ports": [18789, 3000],
+        "base_url": "",
+        "ws_url": "",
+        "origin": "",
+        "session_key": "agent:main:main",
+        "token": "",
+        "password": "",
+        "language": "zh-CN",
+        "discovery_candidates": [
+            {
+                "name": "remote-optional",
+                "base_url": "https://example-openclaw.ts.net",
+                "ws_url": "",
+                "origin": "",
+                "session_key": "agent:main:main",
+                "token": "",
+                "password": "",
+                "priority": 100,
+            },
+        ],
+    }
