@@ -19,6 +19,34 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _utc_from_epoch(epoch: int | float) -> str:
+    seconds = epoch / 1000 if epoch > 1e12 else epoch
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_epoch_ms(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except ValueError:
+        return None
+
+
+def _infer_task_type_from_session_key(key: str) -> str:
+    lowered = key.lower()
+    if ":cron:" in lowered:
+        return "cron"
+    if ":discord:" in lowered:
+        return "discord"
+    return "session"
+
+
 def get_overview() -> Overview:
     with get_connection() as connection:
         row = connection.execute("SELECT * FROM overview WHERE id = 1").fetchone()
@@ -67,6 +95,7 @@ def list_events(
     related_task_id: str | None = None,
     related_agent_id: str | None = None,
     severity: str | None = None,
+    limit: int = 200,
 ) -> list[EventItem]:
     query = "SELECT * FROM events"
     conditions: list[str] = []
@@ -88,7 +117,8 @@ def list_events(
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
-    query += " ORDER BY occurred_at DESC"
+    query += " ORDER BY occurred_at DESC LIMIT ?"
+    parameters.append(max(1, min(int(limit), 500)))
 
     with get_connection() as connection:
         rows = connection.execute(query, parameters).fetchall()
@@ -100,6 +130,7 @@ def list_raw_events(
     event_type: str | None = None,
     task_id: str | None = None,
     agent_id: str | None = None,
+    limit: int = 200,
 ) -> list[RawEventItem]:
     query = "SELECT * FROM raw_events"
     conditions: list[str] = []
@@ -118,7 +149,8 @@ def list_raw_events(
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
-    query += " ORDER BY occurred_at DESC"
+    query += " ORDER BY occurred_at DESC LIMIT ?"
+    parameters.append(max(1, min(int(limit), 500)))
 
     with get_connection() as connection:
         rows = connection.execute(query, parameters).fetchall()
@@ -192,6 +224,186 @@ def _append_raw_event(event: IngestEvent) -> None:
 
 def _apply_event(connection, event: IngestEvent) -> None:
     payload = _event_payload(event)
+
+    if event.eventType == "token_snapshot" and event.taskId:
+        token_input = _int_payload(payload, "tokenInput", "input", default=0)
+        token_output = _int_payload(payload, "tokenOutput", "output", default=0)
+        token_total = _int_payload(payload, "totalToken", "total", default=token_input + token_output)
+        estimated_cost = _float_payload(payload, "estimatedCost", default=0.0)
+        currency = _payload_first(payload, "currency", default="USD")
+        duration_ms = _int_payload(payload, "durationMs", default=0)
+        created_at = _payload_first(payload, "startedAt", default=event.occurredAt)
+        updated_at = _payload_first(payload, "endedAt", default=event.occurredAt)
+        task_type = _payload_first(payload, "taskType", "chatType", default=_infer_task_type_from_session_key(event.taskId))
+        trace_id = _payload_first(payload, "traceId", default=event.taskId)
+        executor_agent_id = _payload_first(payload, "agentId", default=event.agentId or "unknown")
+
+        previous = connection.execute(
+            "SELECT token_total FROM tasks WHERE id = ?",
+            (event.taskId,),
+        ).fetchone()
+        previous_total = int(previous[0]) if previous else 0
+        delta_total = max(0, token_total - previous_total)
+
+        connection.execute(
+            """
+            INSERT INTO tasks (
+                id, trace_id, task_type, source_agent_id, executor_agent_id, executor_node_id,
+                status, created_at, started_at, updated_at, duration_ms, token_input, token_output,
+                token_total, estimated_cost, currency, artifact_count, latest_artifact_path,
+                error_code, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, 0, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL)
+            ON CONFLICT(id) DO UPDATE SET
+                task_type = excluded.task_type,
+                executor_agent_id = excluded.executor_agent_id,
+                created_at = CASE WHEN tasks.created_at > excluded.created_at THEN excluded.created_at ELSE tasks.created_at END,
+                started_at = CASE WHEN tasks.started_at > excluded.started_at THEN excluded.started_at ELSE tasks.started_at END,
+                updated_at = excluded.updated_at,
+                token_input = excluded.token_input,
+                token_output = excluded.token_output,
+                token_total = excluded.token_total,
+                estimated_cost = excluded.estimated_cost,
+                currency = excluded.currency
+            """,
+            (
+                event.taskId,
+                trace_id,
+                task_type,
+                executor_agent_id,
+                executor_agent_id,
+                "node",
+                created_at,
+                created_at,
+                updated_at,
+                token_input,
+                token_output,
+                token_total,
+                estimated_cost,
+                currency,
+            ),
+        )
+        if duration_ms > 0:
+            connection.execute(
+                "UPDATE tasks SET duration_ms = ? WHERE id = ?",
+                (duration_ms, event.taskId),
+            )
+
+        if event.agentId:
+            # Best-effort daily aggregation: increment by observed delta.
+            connection.execute(
+                """
+                INSERT INTO agents (
+                    id, name, connectivity_status, runtime_status, current_task_id,
+                    last_heartbeat_at, last_activity_at, today_token_total, open_alert_count,
+                    derived_status_reason
+                ) VALUES (?, ?, 'online', 'idle', NULL, ?, ?, ?, 0, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    connectivity_status = 'online',
+                    last_activity_at = excluded.last_activity_at,
+                    today_token_total = today_token_total + ?,
+                    derived_status_reason = excluded.derived_status_reason
+                """,
+                (
+                    event.agentId,
+                    event.agentId,
+                    event.occurredAt,
+                    event.occurredAt,
+                    delta_total,
+                    "token snapshot update",
+                    delta_total,
+                ),
+            )
+        return
+
+    if event.eventType == "health":
+        ok = bool(payload.get("ok", True))
+        gateway_ts = _parse_epoch_ms(payload.get("ts"))
+        observed_at = _utc_from_epoch(gateway_ts) if gateway_ts is not None else event.occurredAt
+        derived_status_reason = "gateway health snapshot"
+
+        agents = payload.get("agents")
+        if isinstance(agents, list):
+            for item in agents:
+                if not isinstance(item, dict):
+                    continue
+                agent_id = item.get("agentId")
+                if not isinstance(agent_id, str) or not agent_id.strip():
+                    continue
+                agent_id = agent_id.strip()
+                name = item.get("name")
+                agent_name = name.strip() if isinstance(name, str) and name.strip() else agent_id
+                sessions = item.get("sessions") if isinstance(item.get("sessions"), dict) else {}
+                recent = sessions.get("recent") if isinstance(sessions.get("recent"), list) else []
+                most_recent_ms = None
+                for entry in recent:
+                    if not isinstance(entry, dict):
+                        continue
+                    updated_at_ms = _parse_epoch_ms(entry.get("updatedAt"))
+                    if updated_at_ms is None:
+                        continue
+                    most_recent_ms = updated_at_ms if most_recent_ms is None else max(most_recent_ms, updated_at_ms)
+                last_activity_at = _utc_from_epoch(most_recent_ms) if most_recent_ms is not None else observed_at
+
+                connection.execute(
+                    """
+                    INSERT INTO agents (
+                        id, name, connectivity_status, runtime_status, current_task_id,
+                        last_heartbeat_at, last_activity_at, today_token_total, open_alert_count,
+                        derived_status_reason
+                    ) VALUES (?, ?, ?, 'idle', NULL, ?, ?, 0, 0, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        connectivity_status = excluded.connectivity_status,
+                        last_heartbeat_at = excluded.last_heartbeat_at,
+                        last_activity_at = excluded.last_activity_at,
+                        derived_status_reason = excluded.derived_status_reason
+                    """,
+                    (
+                        agent_id,
+                        agent_name,
+                        "online" if ok else "offline",
+                        observed_at,
+                        last_activity_at,
+                        derived_status_reason,
+                    ),
+                )
+
+                for entry in recent[:50]:
+                    if not isinstance(entry, dict):
+                        continue
+                    key = entry.get("key")
+                    if not isinstance(key, str) or not key.strip():
+                        continue
+                    updated_at_ms = _parse_epoch_ms(entry.get("updatedAt"))
+                    updated_at = _utc_from_epoch(updated_at_ms) if updated_at_ms is not None else last_activity_at
+                    task_type = _infer_task_type_from_session_key(key)
+                    connection.execute(
+                        """
+                        INSERT INTO tasks (
+                            id, trace_id, task_type, source_agent_id, executor_agent_id, executor_node_id,
+                            status, created_at, started_at, updated_at, duration_ms, token_input, token_output,
+                            token_total, estimated_cost, currency, artifact_count, latest_artifact_path,
+                            error_code, error_message
+                        ) VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, 0, 0, 0, 0, 0, 'USD', 0, NULL, NULL, NULL)
+                        ON CONFLICT(id) DO UPDATE SET
+                            status = 'running',
+                            updated_at = excluded.updated_at,
+                            executor_agent_id = excluded.executor_agent_id,
+                            executor_node_id = excluded.executor_node_id
+                        """,
+                        (
+                            key,
+                            key,
+                            task_type,
+                            agent_id,
+                            agent_id,
+                            "gateway",
+                            updated_at,
+                            updated_at,
+                            updated_at,
+                        ),
+                    )
+        return
 
     if event.eventType == "agent_heartbeat" and event.agentId:
         connection.execute(
@@ -494,8 +706,9 @@ def _refresh_overview(connection) -> None:
         """
         UPDATE overview
         SET generated_at = ?, data_latency_seconds = ?, agent_online_count = ?, agent_offline_count = ?,
-            task_running_count = ?, task_waiting_count = ?, task_failed_count = ?, open_alert_count = ?,
-            today_error_count = ?, today_token_input = ?, today_token_output = ?, today_token_total = ?,
+            node_online_count = 0, node_offline_count = 0,
+            task_running_count = ?, task_waiting_count = ?, task_failed_count = ?, task_timeout_count = 0,
+            open_alert_count = ?, today_error_count = ?, today_token_input = ?, today_token_output = ?, today_token_total = ?,
             today_estimated_cost = ?
         WHERE id = 1
         """,

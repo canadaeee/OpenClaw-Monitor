@@ -6,9 +6,9 @@ from .runtime import GatewayRuntimeService
 
 
 class GatewayManager:
-    def __init__(self, collector: OpenClawCollector):
+    def __init__(self, collector: OpenClawCollector, runtime: GatewayRuntimeService):
         self.collector = collector
-        self.runtime = GatewayRuntimeService(collector)
+        self.runtime = runtime
         self.stream = OpenClawGatewayStream(collector)
 
     async def start(self) -> None:

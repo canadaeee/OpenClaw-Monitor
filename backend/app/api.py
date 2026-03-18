@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException
 
 from . import repository
 from .collector import OpenClawCollector
-from .gateway_ws import OpenClawGatewayStream
 from .node_collector import NodeCollectorRuntimeService, NodeSideCollector
 from .schemas import GatewayConfigUpdate, IngestEvent, NodeCollectorIngestFileRequest
 from .settings import load_gateway_settings, save_gateway_settings, settings_to_public_dict
@@ -10,8 +9,13 @@ from .versioning import get_update_status
 
 router = APIRouter(prefix="/api")
 collector = OpenClawCollector(load_gateway_settings())
-gateway_stream = OpenClawGatewayStream(collector)
 node_collector = NodeSideCollector(collector)
+# Configure node collector to poll OpenClaw agent sessions directory
+import os
+agents_base = os.path.expanduser("~/.openclaw/agents")
+if agents_base and os.path.isdir(agents_base):
+    node_collector.config.source_path = agents_base
+    node_collector.state.source_path = agents_base
 node_collector_runtime = NodeCollectorRuntimeService(node_collector)
 runtime_service = None
 gateway_manager = None
@@ -89,12 +93,14 @@ def events(
     related_task_id: str | None = None,
     related_agent_id: str | None = None,
     severity: str | None = None,
+    limit: int = 200,
 ) -> dict:
     items = repository.list_events(
         event_type=event_type,
         related_task_id=related_task_id,
         related_agent_id=related_agent_id,
         severity=severity,
+        limit=limit,
     )
     return {"items": items, "page": 1, "page_size": 20, "total": len(items)}
 
@@ -104,11 +110,13 @@ def raw_events(
     event_type: str | None = None,
     task_id: str | None = None,
     agent_id: str | None = None,
+    limit: int = 200,
 ) -> dict:
     items = repository.list_raw_events(
         event_type=event_type,
         task_id=task_id,
         agent_id=agent_id,
+        limit=limit,
     )
     return {"items": items, "page": 1, "page_size": 20, "total": len(items)}
 
@@ -123,6 +131,8 @@ def gateway_status() -> dict:
     payload = {"config": collector.status()}
     if runtime_service is not None:
         payload["runtime"] = runtime_service.snapshot()
+    if gateway_manager is not None:
+        payload["stream"] = gateway_manager.stream.describe()
     return payload
 
 
@@ -137,7 +147,6 @@ async def update_gateway_config(config: GatewayConfigUpdate) -> dict:
     save_gateway_settings(payload)
     settings = load_gateway_settings()
     collector.update_settings(settings)
-    gateway_stream.collector = collector
     node_collector.gateway_collector = collector
     if gateway_manager is not None:
         await gateway_manager.reconfigure(collector)
@@ -159,7 +168,27 @@ def gateway_ingest(payload: dict) -> dict:
 
 @router.get("/gateway/stream")
 def gateway_stream_status() -> dict:
-    return gateway_stream.describe()
+    # Use the stream instance managed by gateway_manager (if available)
+    if gateway_manager is not None:
+        return gateway_manager.stream.describe()
+    # Fallback to a not-started state
+    return {
+        "enabled": False,
+        "wsUrl": "",
+        "origin": "",
+        "sessionKey": collector.settings.session_key,
+        "note": "Gateway manager not initialized.",
+        "runtime": {
+            "started": False,
+            "connected": False,
+            "messagesReceived": 0,
+            "lastMessageAt": None,
+            "lastError": None,
+            "activeWsUrl": None,
+            "lastHello": None,
+            "note": "Gateway manager not initialized.",
+        },
+    }
 
 
 @router.get("/node-collector/status")

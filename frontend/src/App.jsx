@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const initialOverview = {
   generatedAt: null,
@@ -93,9 +93,14 @@ export default function App() {
   const [gatewayOpen, setGatewayOpen] = useState(false)
   const [nodeCollectorStatus, setNodeCollectorStatus] = useState(null)
   const [updateStatus, setUpdateStatus] = useState(null)
+  const refreshRef = useRef(false)
 
   useEffect(() => {
     void loadAll()
+    const interval = window.setInterval(() => {
+      void loadAll()
+    }, 3000)
+    return () => window.clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -109,6 +114,10 @@ export default function App() {
   }, [themeMode])
 
   async function loadAll() {
+    if (refreshRef.current) {
+      return
+    }
+    refreshRef.current = true
     try {
       const [
         overviewJson,
@@ -125,7 +134,7 @@ export default function App() {
         fetchJson('/api/agents'),
         fetchJson('/api/tasks'),
         fetchJson('/api/alerts'),
-        fetchJson('/api/events'),
+        fetchJson('/api/events?limit=200'),
         fetchJson('/api/gateway/status'),
         fetchJson('/api/gateway/config'),
         fetchJson('/api/node-collector/status'),
@@ -144,6 +153,8 @@ export default function App() {
       setStatus('ready')
     } catch {
       setStatus('error')
+    } finally {
+      refreshRef.current = false
     }
   }
 
@@ -226,6 +237,7 @@ export default function App() {
             agents={agents}
             alerts={alerts}
             events={events}
+            gatewayStatus={gatewayStatus}
             gatewayLabel={gatewayLabel}
             nodeCollectorStatus={nodeCollectorStatus}
             updateStatus={updateStatus}
@@ -275,6 +287,7 @@ function PageHeader({ activePage, status, snapshot, gatewayStatus, onOpenGateway
   const page = pageMeta[activePage]
   const runtime = gatewayStatus?.runtime ?? {}
   const detected = Boolean(runtime.detected)
+  const wsConnected = Boolean(gatewayStatus?.stream?.runtime?.connected)
 
   return (
     <header className="header">
@@ -290,6 +303,10 @@ function PageHeader({ activePage, status, snapshot, gatewayStatus, onOpenGateway
         <div className={detected ? 'status-badge gateway-ok' : 'status-badge gateway-warn'}>
           <span className={`status-dot ${detected ? 'ready' : ''}`} />
           <span>{detected ? '已发现 Gateway' : '未发现 Gateway'}</span>
+        </div>
+        <div className={wsConnected ? 'status-badge gateway-ok' : 'status-badge gateway-warn'}>
+          <span className={`status-dot ${wsConnected ? 'ready' : ''}`} />
+          <span>{wsConnected ? 'Gateway WS 已连接' : 'Gateway WS 未连接'}</span>
         </div>
         <button type="button" className="btn btn-outline" onClick={onOpenGateway}>
           Gateway 设置
@@ -311,10 +328,12 @@ function OverviewPage({
   agents,
   alerts,
   events,
+  gatewayStatus,
   gatewayLabel,
   nodeCollectorStatus,
   updateStatus,
 }) {
+  const gatewayAgents = gatewayStatus?.stream?.runtime?.lastHealthSummary?.agents ?? []
   const statCards = [
     {
       label: '在线 Agent',
@@ -399,6 +418,67 @@ function OverviewPage({
       </section>
 
       <section className="collector-strip">
+        <article className="panel collector-panel">
+          <div className="panel-head">
+            <div>
+              <h2>Gateway Realtime</h2>
+              <p>来自 OpenClaw Gateway WebSocket 的实时健康与连接状态。</p>
+            </div>
+            <span className="panel-note">
+              {gatewayStatus?.stream?.runtime?.connected ? '实时连接中' : '未连接'}
+            </span>
+          </div>
+          <div className="collector-grid">
+            <div className="summary-card">
+              <span>连接状态</span>
+              <strong>{gatewayStatus?.stream?.runtime?.connected ? 'Connected' : 'Disconnected'}</strong>
+              <p>{gatewayStatus?.stream?.runtime?.lastError || '当前未报告错误'}</p>
+            </div>
+            <div className="summary-card">
+              <span>健康状态</span>
+              <strong>
+                {gatewayStatus?.stream?.runtime?.lastHealthSummary?.ok === true
+                  ? 'OK'
+                  : gatewayStatus?.stream?.runtime?.lastHealthSummary?.ok === false
+                    ? 'Degraded'
+                    : '--'}
+              </strong>
+              <p>最近健康包：{formatDateTime(gatewayStatus?.stream?.runtime?.lastHealthAt)}</p>
+            </div>
+            <div className="summary-card">
+              <span>Agent / Session</span>
+              <strong>
+                {formatValue(gatewayStatus?.stream?.runtime?.lastHealthSummary?.agentCount)} /{' '}
+                {formatValue(gatewayStatus?.stream?.runtime?.lastHealthSummary?.sessionCount)}
+              </strong>
+              <p>channels：{formatValue(gatewayStatus?.stream?.runtime?.lastHealthSummary?.channelCount)}</p>
+            </div>
+            <div className="summary-card">
+              <span>心跳间隔</span>
+              <strong>{formatValue(gatewayStatus?.stream?.runtime?.lastHealthSummary?.heartbeatSeconds)} 秒</strong>
+              <p>duration：{formatValue(gatewayStatus?.stream?.runtime?.lastHealthSummary?.durationMs)} ms</p>
+            </div>
+          </div>
+          <div className="table-list">
+            {gatewayAgents.map((agent) => (
+              <div className="table-row" key={agent.agentId}>
+                <div className="table-main">
+                  <strong>{agent.agentId}</strong>
+                  <span>
+                    sessions {formatValue(agent.sessionsCount)} / last {formatEpoch(agent.lastSessionUpdatedAt || agent.heartbeatTs)}
+                  </span>
+                </div>
+                <div className="table-meta">
+                  <span className={`badge ${agent.isDefault ? 'online' : 'unknown'}`}>
+                    {agent.isDefault ? '默认' : 'Agent'}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {gatewayAgents.length === 0 && <EmptyState text="暂未收到 Gateway health agents 列表。" />}
+          </div>
+        </article>
+
         <article className="panel collector-panel">
           <div className="panel-head">
             <div>
@@ -553,6 +633,22 @@ function OverviewPage({
   )
 }
 
+function formatEpoch(value) {
+  if (value === null || value === undefined || value === '') {
+    return '--'
+  }
+  const raw = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(raw)) {
+    return '--'
+  }
+  const ms = raw > 1e12 ? raw : raw * 1000
+  const date = new Date(ms)
+  if (Number.isNaN(date.getTime())) {
+    return '--'
+  }
+  return date.toLocaleString()
+}
+
 function AgentsPage({ agents, overview }) {
   return (
     <>
@@ -640,9 +736,22 @@ function TasksPage({ tasks }) {
 
 function TokenPage({ overview, tasks, agents }) {
   const topAgents = [...agents].sort((a, b) => (b.todayTokenTotal || 0) - (a.todayTokenTotal || 0))
+  const costUnavailable = (overview.todayTokenTotal || 0) > 0 && (overview.todayEstimatedCost || 0) === 0
 
   return (
     <>
+      {costUnavailable && (
+        <section className="update-banner">
+          <div>
+            <strong>金额消耗暂无法估算</strong>
+            <p>
+              当前 OpenClaw 本机数据只包含 Token 计数，未包含模型单价 / provider 账单信息。若需要金额估算，请在
+              <code>config/pricing.json</code> 配置 per-1M token 单价（参考 <code>config/pricing.example.json</code>）。
+            </p>
+          </div>
+          <span className="update-badge">需要价格表</span>
+        </section>
+      )}
       <section className="grid-dashboard">
         <StatCard label="今日总 Token" value={overview.todayTokenTotal} note={formatCurrency(overview.todayEstimatedCost)} tone="neutral" />
         <StatCard
@@ -725,15 +834,15 @@ function EventsPage({ events }) {
       </div>
       <div className="timeline">
         {events.map((event) => (
-          <div className="timeline-item" key={event.id || `${event.eventType}-${event.occurredAt}`}>
+          <div className="timeline-item" key={event.id || `${event.type}-${event.occurredAt}`}>
             <div className="timeline-dot" />
             <div className="timeline-body">
               <div className="timeline-top">
-                <strong>{event.title || event.eventType}</strong>
+                <strong>{event.title || event.type}</strong>
                 <span className="time-text">{formatDateTime(event.occurredAt)}</span>
               </div>
               <p>{event.detail || '暂无详细描述。'}</p>
-              <span className="badge subtle">{event.eventType}</span>
+              <span className="badge subtle">{event.type}</span>
             </div>
           </div>
         ))}

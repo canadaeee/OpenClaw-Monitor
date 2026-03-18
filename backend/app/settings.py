@@ -49,6 +49,15 @@ def load_gateway_settings() -> GatewaySettings:
     if CONFIG_PATH.exists():
       data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
+    base_url = _clean_string(os.getenv("OPENCLAW_GATEWAY_BASE_URL"), data.get("base_url", ""))
+    token = _clean_string(os.getenv("OPENCLAW_GATEWAY_TOKEN"), data.get("token", ""))
+    password = _clean_string(os.getenv("OPENCLAW_GATEWAY_PASSWORD"), data.get("password", ""))
+
+    if os.getenv("OPENCLAW_GATEWAY_TOKEN") is None:
+        openclaw_token = _load_openclaw_gateway_token()
+        if openclaw_token and _is_localish_gateway_url(base_url):
+            token = openclaw_token
+
     return GatewaySettings(
         enabled=_coerce_bool(os.getenv("OPENCLAW_GATEWAY_ENABLED"), data.get("enabled", False)),
         auto_capture=_coerce_bool(os.getenv("OPENCLAW_GATEWAY_AUTO_CAPTURE"), data.get("auto_capture", True)),
@@ -56,12 +65,12 @@ def load_gateway_settings() -> GatewaySettings:
         mode=_clean_string(os.getenv("OPENCLAW_GATEWAY_MODE"), data.get("mode", "local-first")),
         default_port=int(os.getenv("OPENCLAW_GATEWAY_DEFAULT_PORT", data.get("default_port", 18789))),
         discovery_ports=_load_ports(os.getenv("OPENCLAW_GATEWAY_DISCOVERY_PORTS"), data.get("discovery_ports")),
-        base_url=_clean_string(os.getenv("OPENCLAW_GATEWAY_BASE_URL"), data.get("base_url", "")),
+        base_url=base_url,
         ws_url=_clean_string(os.getenv("OPENCLAW_GATEWAY_WS_URL"), data.get("ws_url", "")),
         origin=_clean_string(os.getenv("OPENCLAW_GATEWAY_ORIGIN"), data.get("origin", "")),
         session_key=_clean_string(os.getenv("OPENCLAW_GATEWAY_SESSION_KEY"), data.get("session_key", "agent:main:main")),
-        token=_clean_string(os.getenv("OPENCLAW_GATEWAY_TOKEN"), data.get("token", "")),
-        password=_clean_string(os.getenv("OPENCLAW_GATEWAY_PASSWORD"), data.get("password", "")),
+        token=token,
+        password=password,
         language=_clean_string(os.getenv("OPENCLAW_GATEWAY_LANGUAGE"), data.get("language", "zh-CN")),
         discovery_candidates=_load_candidates(data.get("discovery_candidates")),
     )
@@ -193,3 +202,30 @@ def _default_gateway_config() -> dict[str, Any]:
             },
         ],
     }
+
+
+def _load_openclaw_gateway_token() -> str:
+    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    if not config_path.exists():
+        return ""
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    gateway = payload.get("gateway")
+    if not isinstance(gateway, dict):
+        return ""
+    auth = gateway.get("auth")
+    if not isinstance(auth, dict):
+        return ""
+    token = auth.get("token")
+    if not isinstance(token, str):
+        return ""
+    return token.strip()
+
+
+def _is_localish_gateway_url(url: str) -> bool:
+    value = url.strip().lower()
+    if not value:
+        return True
+    return value.startswith("http://127.0.0.1") or value.startswith("http://localhost")
