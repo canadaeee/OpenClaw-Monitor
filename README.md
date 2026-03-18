@@ -153,12 +153,12 @@ git push -u origin main
 ```
 
 3. 仓库默认远端地址为 `https://github.com/canadaeee/OpenClaw-Monitor.git`
-4. 使用根目录的 [`RELEASE_NOTES_v1.1.0.md`](./RELEASE_NOTES_v1.1.0.md) 作为最新 Release 文案（首版文案见 [`RELEASE_NOTES_v1.0.0.md`](./RELEASE_NOTES_v1.0.0.md)）
+4. 使用根目录的 [`RELEASE_NOTES_v1.1.1.md`](./RELEASE_NOTES_v1.1.1.md) 作为最新 Release 文案（历史版本见 `RELEASE_NOTES_v1.*.md`）
 
 ### 仓库说明
 
 - `docs/` 目录仅本地保留，不会推送到 GitHub
-- 版本发布说明位于 [`RELEASE_NOTES_v1.1.0.md`](./RELEASE_NOTES_v1.1.0.md)
+- 版本发布说明位于 [`RELEASE_NOTES_v1.1.1.md`](./RELEASE_NOTES_v1.1.1.md)
 
 ### 致敬
 
@@ -309,12 +309,12 @@ git push -u origin main
 ```
 
 3. The default repository remote is `https://github.com/canadaeee/OpenClaw-Monitor.git`
-4. Use [`RELEASE_NOTES_v1.1.0.md`](./RELEASE_NOTES_v1.1.0.md) for the latest release notes (first release notes: [`RELEASE_NOTES_v1.0.0.md`](./RELEASE_NOTES_v1.0.0.md))
+4. Use [`RELEASE_NOTES_v1.1.1.md`](./RELEASE_NOTES_v1.1.1.md) for the latest release notes (historical notes: `RELEASE_NOTES_v1.*.md`)
 
 ### Repository Notes
 
 - `docs/` is intentionally kept local and excluded from GitHub
-- release notes live in [`RELEASE_NOTES_v1.1.0.md`](./RELEASE_NOTES_v1.1.0.md)
+- release notes live in [`RELEASE_NOTES_v1.1.1.md`](./RELEASE_NOTES_v1.1.1.md)
 
 ### Respect
 

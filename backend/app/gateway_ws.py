@@ -276,7 +276,7 @@ class OpenClawGatewayStream:
             "maxProtocol": 3,
                 "client": {
                     "id": "gateway-client",
-                    "version": "openclaw-monitor/1.1.0",
+                    "version": "openclaw-monitor/1.1.1",
                     "platform": "python",
                     "mode": "backend",
                     "instanceId": f"monitor-{uuid.uuid4()}",
