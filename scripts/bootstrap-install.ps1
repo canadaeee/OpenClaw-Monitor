@@ -3,7 +3,8 @@ function Install-OpenClawMonitor {
         [Parameter(Mandatory = $true)]
         [string]$RepoUrl,
         [string]$Branch = "main",
-        [string]$TargetDir = "$HOME\\OpenClaw-Monitor"
+        [string]$TargetDir = "$HOME\\OpenClaw-Monitor",
+        [switch]$Start
     )
 
     $ErrorActionPreference = "Stop"
@@ -22,7 +23,10 @@ function Install-OpenClawMonitor {
     }
 
     & (Join-Path $TargetDir "scripts\\install-windows.ps1")
+    if ($Start) {
+        & (Join-Path $TargetDir "scripts\\run-windows.ps1")
+    }
 }
 
 Write-Host "Use:"
-Write-Host "  Install-OpenClawMonitor -RepoUrl https://github.com/<owner>/<repo>.git"
+Write-Host "  Install-OpenClawMonitor -RepoUrl https://github.com/<owner>/<repo>.git [-Start]"
