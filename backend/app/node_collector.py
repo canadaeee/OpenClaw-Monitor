@@ -190,8 +190,13 @@ class NodeSideCollector:
             cache_read = _int(session_info.get("cacheRead") or 0)
             cache_write = _int(session_info.get("cacheWrite") or 0)
             computed_total = input_tokens + output_tokens + cache_read + cache_write
-            reported_total = _int(session_info.get("totalTokens") or session_info.get("total") or 0)
-            total_tokens = computed_total if computed_total > 0 else reported_total
+            reported_total = max(
+                _int(session_info.get("totalTokensFresh") or 0),
+                _int(session_info.get("totalTokens") or 0),
+                _int(session_info.get("total") or 0),
+            )
+            # Prefer the larger total to avoid "stuck" counters when OpenClaw updates only one side.
+            total_tokens = max(computed_total, reported_total)
             model_provider = session_info.get("modelProvider")
             model_id = session_info.get("model")
 
