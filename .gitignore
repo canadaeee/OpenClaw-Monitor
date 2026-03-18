@@ -8,6 +8,8 @@ __pycache__/
 venv/
 docs/
 config/gateway.json
+backend/config/
+config/pricing.json
 
 frontend/node_modules/
 frontend/dist/
@@ -17,6 +19,8 @@ backend/app/__pycache__/
 
 data/monitor.db
 data/raw-events.jsonl
+data/node-events*.jsonl
+data/*.db-journal
 frontend/vite.out.log
 frontend/vite.err.log
 backend/uvicorn.out.log

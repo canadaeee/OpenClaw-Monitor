@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 from .repository import ingest_event
 from .schemas import IngestEvent
@@ -101,9 +103,14 @@ class OpenClawCollector:
         return {"reachable": False, "reason": "all candidates failed", "failures": failures}
 
     def normalize_gateway_event(self, payload: dict[str, Any]) -> IngestEvent:
-        event_id = str(payload.get("eventId") or payload.get("id") or "gateway-event")
+        event_id = _maybe_str(payload.get("eventId") or payload.get("id")) or f"gateway-{uuid4()}"
         event_type = str(payload.get("eventType") or payload.get("type") or "gateway_event")
-        occurred_at = str(payload.get("occurredAt") or payload.get("timestamp") or payload.get("createdAt"))
+        occurred_at = _normalize_occurred_at(
+            payload.get("occurredAt")
+            or payload.get("timestamp")
+            or payload.get("createdAt")
+            or payload.get("ts")
+        )
         severity = str(payload.get("severity") or "info")
         title = str(payload.get("title") or payload.get("name") or event_type)
         detail = str(payload.get("detail") or payload.get("message") or "OpenClaw gateway event")
@@ -185,3 +192,28 @@ def _maybe_str(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _normalize_occurred_at(value: object) -> str:
+    if value is None:
+        return _utc_now()
+    if isinstance(value, (int, float)):
+        return _utc_from_epoch(value)
+    text = str(value).strip()
+    if not text or text.lower() in {"none", "null"}:
+        return _utc_now()
+    if text.isdigit():
+        try:
+            return _utc_from_epoch(float(text))
+        except ValueError:
+            return _utc_now()
+    return text
+
+
+def _utc_from_epoch(epoch: float) -> str:
+    seconds = epoch / 1000 if epoch > 1e12 else epoch
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

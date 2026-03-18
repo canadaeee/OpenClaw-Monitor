@@ -14,7 +14,7 @@ init_db()
 ensure_gateway_config()
 
 runtime_service = GatewayRuntimeService(collector)
-gateway_manager = GatewayManager(collector)
+gateway_manager = GatewayManager(collector, runtime_service)
 
 
 @asynccontextmanager
@@ -48,7 +48,7 @@ app.add_middleware(
         "http://127.0.0.1:12888",
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
