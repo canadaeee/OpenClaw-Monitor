@@ -27,7 +27,7 @@ class GatewayCandidate:
 
 @dataclass
 class GatewaySettings:
-    enabled: bool = False
+    enabled: bool = True
     auto_capture: bool = True
     probe_interval_seconds: int = 15
     mode: str = "local-first"
@@ -59,7 +59,7 @@ def load_gateway_settings() -> GatewaySettings:
             token = openclaw_token
 
     return GatewaySettings(
-        enabled=_coerce_bool(os.getenv("OPENCLAW_GATEWAY_ENABLED"), data.get("enabled", False)),
+        enabled=_coerce_bool(os.getenv("OPENCLAW_GATEWAY_ENABLED"), data.get("enabled", True)),
         auto_capture=_coerce_bool(os.getenv("OPENCLAW_GATEWAY_AUTO_CAPTURE"), data.get("auto_capture", True)),
         probe_interval_seconds=int(os.getenv("OPENCLAW_GATEWAY_PROBE_INTERVAL", data.get("probe_interval_seconds", 15))),
         mode=_clean_string(os.getenv("OPENCLAW_GATEWAY_MODE"), data.get("mode", "local-first")),
