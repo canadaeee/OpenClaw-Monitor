@@ -15,7 +15,9 @@ python3 -m venv --help >/dev/null 2>&1 || { echo "python3-venv is required"; exi
 [[ -f "$FRONTEND_DIR/package.json" ]] || { echo "Missing frontend/package.json"; exit 1; }
 
 echo "[2/5] Creating backend virtual environment"
-python3 -m venv "$VENV_DIR"
+if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+  python3 -m venv "$VENV_DIR"
+fi
 
 echo "[3/5] Installing backend dependencies"
 cd "$BACKEND_DIR"
@@ -27,7 +29,11 @@ echo "[4/5] Initializing SQLite database"
 
 echo "[5/6] Installing frontend dependencies"
 cd "$FRONTEND_DIR"
-npm install
+if [[ -f "$FRONTEND_DIR/package-lock.json" ]]; then
+  npm ci
+else
+  npm install
+fi
 
 echo "[6/6] Building frontend"
 npm run build

@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_URL=""
 BRANCH="main"
 TARGET_DIR="${HOME}/OpenClaw-Monitor"
+AUTO_START="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -18,6 +19,10 @@ while [[ $# -gt 0 ]]; do
     --dir)
       TARGET_DIR="${2:-$TARGET_DIR}"
       shift 2
+      ;;
+    --start)
+      AUTO_START="true"
+      shift 1
       ;;
     *)
       echo "Unknown argument: $1"
@@ -44,7 +49,11 @@ else
 fi
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  exec bash "$TARGET_DIR/scripts/install-macos.sh"
+  bash "$TARGET_DIR/scripts/install-macos.sh"
 else
-  exec bash "$TARGET_DIR/scripts/install-ubuntu.sh"
+  bash "$TARGET_DIR/scripts/install-ubuntu.sh"
+fi
+
+if [[ "$AUTO_START" == "true" ]]; then
+  exec bash "$TARGET_DIR/scripts/run.sh"
 fi
