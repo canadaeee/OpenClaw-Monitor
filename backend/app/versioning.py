@@ -14,6 +14,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def get_update_status() -> dict:
     payload = {
         "currentVersion": APP_VERSION,
+        "currentTag": None,
+        "currentDescribe": None,
         "updateAvailable": False,
         "currentCommit": None,
         "remoteCommit": None,
@@ -39,6 +41,9 @@ def get_update_status() -> dict:
     current_commit = git_output(["rev-parse", "HEAD"])
     if current_commit:
         payload["currentCommit"] = current_commit
+
+    payload["currentTag"] = git_output(["describe", "--tags", "--abbrev=0"], allow_failure=True)
+    payload["currentDescribe"] = git_output(["describe", "--tags", "--always"], allow_failure=True)
 
     remote_name = first_remote_name()
     if not remote_name:

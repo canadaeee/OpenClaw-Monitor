@@ -363,6 +363,19 @@ function OverviewPage({
 
   return (
     <>
+      {updateStatus && !updateStatus.checked && (
+        <section className="update-banner">
+          <div>
+            <strong>更新检查不可用</strong>
+            <p>
+              当前版本 {updateStatus.currentVersion}，暂无法检查远端更新（{updateStatus.note || 'unknown'}）。可稍后手动运行
+              <code>{updateStatus.updateCommand}</code>。
+            </p>
+          </div>
+          <span className="update-badge">检查失败</span>
+        </section>
+      )}
+
       {updateStatus?.updateAvailable && (
         <section className="update-banner">
           <div>
